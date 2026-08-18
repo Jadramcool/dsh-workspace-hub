@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "dsh-workspace-hub",
   "description": "DSH workspace folders: categorize workspaces into folders in the left sidebar (drag reorder for folders/workspaces/sessions, inline edit, one-click expand/collapse, search) plus per-workspace token usage and cost stats (inline totals, hover detail card, overview panel with per-model price cards; DeepSeek official peak/off-peak pricing defaults for all deepseek/* models, three spend calibers all/off-peak/peak).",
   "version": "0.1.0",
@@ -49,7 +49,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jadramcool/dsh-workspace-hub.git"
+    "url": "https://github.com/Jadramcool/dsh-workspace-hub.git"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs",
