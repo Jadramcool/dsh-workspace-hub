@@ -150,7 +150,7 @@ export function apply(ctx: Context) {
   })
 
   const costCache = new Map<string, { at: number; models: Record<string, ModelBuckets> }>()
-  const COST_TTL = 30000
+  const COST_TTL = 300000
   const LOG_READ_TIMEOUT_MS = 15000
 
   /** Reject a promise after a deadline (the underlying work keeps running). */
@@ -162,6 +162,20 @@ export function apply(ctx: Context) {
         (e) => { clearTimeout(t); reject(e) },
       )
     })
+  }
+
+  /** Run an async mapper over items with a concurrency cap (order-preserving). */
+  async function mapConcurrent<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+    const out = new Array<R>(items.length)
+    let next = 0
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++
+        out[i] = await fn(items[i])
+      }
+    })
+    await Promise.all(workers)
+    return out
   }
 
   /** Aggregate token totals straight from the session log events. */
@@ -367,9 +381,8 @@ export function apply(ctx: Context) {
         const body = await readJsonBody(req)
         const ids = sessionIdsOf(body)
         const out: Record<string, TokenUsageView | null> = {}
-        for (const id of ids) {
-          out[id] = await tokensFor(id)
-        }
+        const results = await mapConcurrent(ids, 6, async (id) => ({ id, v: await tokensFor(id) }))
+        for (const r of results) out[r.id] = r.v
         writeJson(res, 200, out)
       },
     },
@@ -382,12 +395,9 @@ export function apply(ctx: Context) {
         const ids = sessionIdsOf(body)
         const now = Date.now()
         const out: Record<string, Record<string, ModelBuckets> | null> = {}
-        for (const id of ids) {
+        const results = await mapConcurrent(ids, 3, async (id) => {
           const hit = costCache.get(id)
-          if (hit && now - hit.at < COST_TTL) {
-            out[id] = hit.models
-            continue
-          }
+          if (hit && now - hit.at < COST_TTL) return { id, models: hit.models }
           try {
             const s = svc()
             let events: any = null
@@ -428,12 +438,13 @@ export function apply(ctx: Context) {
               }
             }
             costCache.set(id, { at: now, models })
-            out[id] = models
+            return { id, models }
           } catch (err) {
             console.error('wsfm: cost for ' + id + ' failed', err)
-            out[id] = null
+            return { id, models: null }
           }
-        }
+        })
+        for (const r of results) out[r.id] = r.models
         writeJson(res, 200, out)
       },
     },
