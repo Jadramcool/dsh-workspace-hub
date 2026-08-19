@@ -344,9 +344,9 @@ export function apply(ctx: Context) {
   }
 
   /** Fetch OpenCode Go plan usage with a short cache; failures are not cached. */
-  async function opencodeUsage(): Promise<UsageResult> {
+  async function opencodeUsage(force = false): Promise<UsageResult> {
     const now = Date.now()
-    if (usageCache && now - usageCache.at < OPCODE_USAGE_TTL) return usageCache.data
+    if (!force && usageCache && now - usageCache.at < OPCODE_USAGE_TTL) return usageCache.data
     const key = readOpencodeKey()
     if (!key) return { ok: false, reason: 'no-key' }
     try {
@@ -379,7 +379,9 @@ export function apply(ctx: Context) {
       path: '/api/wsfm/usage',
       handler: async (req, res) => {
         if (!isLoopbackRequest(req)) return writeJson(res, 403, { error: 'forbidden: loopback-only' })
-        writeJson(res, 200, await opencodeUsage())
+        const body = await readJsonBody(req)
+        const force = !!(body && body.refresh)
+        writeJson(res, 200, await opencodeUsage(force))
       },
     },
     {
