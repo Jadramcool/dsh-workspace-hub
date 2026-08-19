@@ -106,6 +106,8 @@ window.__ModuleLoader__.load({
     .wsfm-sess:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(148,163,184,.08))}
     .wsfm-sess.current{background:var(--dsw-alias-interactive-bg-active,rgba(110,168,255,.13))}
     .wsfm-sess-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
+    .wsfm-sess-tok{font-size:9.5px;color:var(--dsw-alias-label-tertiary,#9aa3b2);font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+    .wsfm-sess-money{font-size:9.5px;color:var(--dsw-alias-state-success-primary,#4ade80);font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;opacity:.9}
     .wsfm-sess-tag{font-size:9.5px;color:var(--dsw-alias-label-tertiary,#9aa3b2);border:1px dashed var(--dsw-alias-border-l1,rgba(148,163,184,.3));border-radius:4px;padding:0 4px;flex:none}
     .wsfm-sacts{visibility:hidden;opacity:0;display:flex;align-items:center;gap:1px;transition:opacity .12s ease}
     .wsfm-sess:hover .wsfm-sacts{visibility:visible;opacity:1}
@@ -1359,6 +1361,10 @@ window.__ModuleLoader__.load({
         } else {
           kids.push(React.createElement('span', { key: 't', className: 'wsfm-sess-title', title: s.displayTitle }, s.displayTitle))
           if (s.blank) kids.push(React.createElement('span', { key: 'tag', className: 'wsfm-sess-tag' }, '空白'))
+          const sTok = tokenMap[s.id]
+          if (sTok) kids.push(React.createElement('span', { key: 'tok', className: 'wsfm-sess-tok', title: 'Token 消耗' }, fmtTokens(usageTotal(sTok))))
+          const sCost = costFor([s.id])
+          if (sCost > 0) kids.push(React.createElement('span', { key: 'money', className: 'wsfm-sess-money', title: '估算花费' }, fmtMoney(sCost)))
           kids.push(React.createElement('span', { key: 'acts', className: 'wsfm-sacts' },
             React.createElement(IconBtn, { title: '重命名会话', icon: IC_PENCIL, onClick: () => beginEdit({ kind: 'session', id: s.id }) }),
             React.createElement(IconBtn, { title: '分叉此会话', icon: IC_FORK, onClick: () => forkSession(s.id) }),
