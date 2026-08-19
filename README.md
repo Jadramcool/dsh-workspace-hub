@@ -68,6 +68,12 @@ pnpm build
 dsh plugin --profile web add link:<本仓库路径>
 ```
 
+**从 GitHub 安装**（自动执行 prepare 构建，免去本地构建）：
+
+```bash
+dsh plugin --profile web add github:Jadramcool/dsh-workspace-hub
+```
+
 **发布到 npm 后**：
 
 ```bash
