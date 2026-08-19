@@ -47,6 +47,19 @@
     "LICENSE"
   ],
   "license": "Apache-2.0",
+  "author": "jadramcool",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "workspace",
+    "workspaces",
+    "folder",
+    "token",
+    "cost",
+    "usage",
+    "opencode",
+    "sidebar"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/Jadramcool/dsh-workspace-hub.git"

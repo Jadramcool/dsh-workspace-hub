@@ -35,7 +35,13 @@
   - `空闲` / `高峰` 只看对应时段
   - ✅ 恒等式：**全部 = 空闲 + 高峰**
 
-> 💾 **数据存储**：分组、排序、单价全部保存在浏览器 localStorage（`dsh.wsFolders.v1` / `dsh.wsPrices.v1`），无服务端状态，卸载即清净。
+### 📡 OpenCode Go 额度
+
+- **三窗口用量** — 5 小时滚动 / 本周 / 本月，百分比 + 进度条（<50% 绿 / 50–80% 黄 / ≥80% 红）+ 重置时间
+- **一键刷新** — 绕过缓存直连官方端点
+- 密钥自动读取自 `~/.local/share/opencode/auth.json`（`opencode-go` / `opencode` 条目），零配置
+
+> 💾 **数据存储**：分组、排序、单价保存在浏览器 localStorage（`dsh.wsFolders.v1` / `dsh.wsPrices.v1`），费用缓存（`dsh.wsCost.v1`）与额度缓存（`dsh.wsUsage.v1`）同样本地化；Host 侧费用结果持久化到 `~/.dsh/wsfm-cost.json`（按会话日志水位校验，重启不重算未变化的会话），无服务端状态，卸载即清净。
 
 ---
 
@@ -43,7 +49,7 @@
 
 | 半 | 入口 | 职责 |
 |---|---|---|
-| 🖥️ Host | `src/index.ts` → `lib/index.js` | `/api/wsfm/tokens`、`/api/wsfm/cost` 两个 **loopback-only** JSON 路由；读取会话投影缓存与会话日志 |
+| 🖥️ Host | `src/index.ts` → `lib/index.js` | `/api/wsfm/tokens`、`/api/wsfm/cost`、`/api/wsfm/usage` 三个 **loopback-only** JSON 路由；读取会话投影缓存与会话日志，磁盘费用缓存，OpenCode Go 额度代理 |
 | 🌐 Client | `src/client/index.js` → `lib/client.js` | ModuleLoader handoff bundle；注入 `sidebar.workspaces` 槽位 |
 
 - 🪶 **零第三方运行时依赖** — host 侧零依赖，client 侧仅 peer 依赖 `react`
