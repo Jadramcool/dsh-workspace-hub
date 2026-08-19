@@ -185,13 +185,10 @@ export function apply(ctx: Context) {
   async function tokensFor(id: string): Promise<TokenUsageView | null> {
     const s = svc()
     let usage: Record<string, unknown> | null = null
+    // Live projection first: a live session's cold row lags behind (checkpoints
+    // are write-behind), so the in-memory projection is the freshest source.
     try {
-      if (s.cache && typeof s.cache.coldSnapshot === 'function') {
-        const snap = await s.cache.coldSnapshot(id)
-        const v = snap && snap.values && snap.values.tokenUsage
-        if (v) usage = v
-      }
-      if (!usage && s.projections && s.sessions && typeof s.sessions.get === 'function') {
+      if (s.projections && s.sessions && typeof s.sessions.get === 'function') {
         const live = s.sessions.get(id)
         if (live) {
           const snap = s.projections.snapshot(live)
@@ -200,7 +197,18 @@ export function apply(ctx: Context) {
         }
       }
     } catch (err) {
-      console.error('wsfm: projection tokens for ' + id + ' failed', err)
+      console.error('wsfm: live tokens for ' + id + ' failed', err)
+    }
+    if (!usage) {
+      try {
+        if (s.cache && typeof s.cache.coldSnapshot === 'function') {
+          const snap = await s.cache.coldSnapshot(id)
+          const v = snap && snap.values && snap.values.tokenUsage
+          if (v) usage = v
+        }
+      } catch (err) {
+        console.error('wsfm: projection tokens for ' + id + ' failed', err)
+      }
     }
     if (usage) {
       const t = usage as { totals?: TokenUsageView; uncachedInputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }
