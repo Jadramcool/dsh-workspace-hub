@@ -374,12 +374,18 @@ window.__ModuleLoader__.load({
     }
     
     // Official price for one model key: exact REF_PRICES match wins; any other
-    // deepseek/* model defaults to the V4-Flash official rate. Non-deepseek
+    // Official price for one model key: exact REF_PRICES match wins; otherwise
+    // ANY provider's deepseek model (opencode's key is e.g. "opencode/deepseek-v4-flash",
+    // not "deepseek/…") defaults to an official DeepSeek rate — pro variants get
+    // the pro card, everything else deepseek gets the flash card. Non-deepseek
     // models without a reference price return undefined (user must set them).
     function officialPriceFor(key) {
       if (REF_PRICES[key]) return REF_PRICES[key]
-      if (key && key.indexOf('deepseek/') === 0) return REF_PRICES['deepseek/deepseek-v4-flash']
-      return undefined
+      if (!key) return undefined
+      const lower = key.toLowerCase()
+      if (lower.indexOf('deepseek') === -1) return undefined
+      if (lower.indexOf('v4-pro') !== -1 || lower.indexOf('deepseek-pro') !== -1) return REF_PRICES['deepseek/deepseek-v4-pro']
+      return REF_PRICES['deepseek/deepseek-v4-flash']
     }
     
     // Effective price row for one model key: user-saved row wins, else official.
