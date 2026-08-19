@@ -15,7 +15,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { readFileSync } from 'node:fs'
+import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /** Stable cordis plugin name. */
@@ -151,7 +151,80 @@ export function apply(ctx: Context) {
 
   const costCache = new Map<string, { at: number; models: Record<string, ModelBuckets> }>()
   const COST_TTL = 300000
+  const COST_DISK_TTL = 600000
   const LOG_READ_TIMEOUT_MS = 15000
+
+  // ---- Disk-persisted cost cache -------------------------------------------
+  // Cost breakdowns come from replaying whole session logs, which is expensive
+  // (tens of seconds for large sessions). Persist each session's result next to
+  // the projection watermark (asOfSeq) it was computed at: on a later request,
+  // if the session's watermark is unchanged the log has not grown, so the disk
+  // value is still exact and we skip the replay entirely. Freshly computed
+  // values (within COST_DISK_TTL) are reused too.
+  interface CostDiskEntry { at: number; asOf?: number; models: Record<string, ModelBuckets> }
+  const costDisk = new Map<string, CostDiskEntry>()
+  let costDiskPath = ''
+  let costDiskDirty = false
+  let costDiskTimer: ReturnType<typeof setTimeout> | null = null
+
+  function loadCostDisk(): void {
+    try {
+      const home = process.env.USERPROFILE || process.env.HOME || ''
+      if (!home) return
+      costDiskPath = join(home, '.dsh', 'wsfm-cost.json')
+      const raw = readFileSync(costDiskPath, 'utf8')
+      const parsed = JSON.parse(raw) as Record<string, CostDiskEntry>
+      if (parsed && typeof parsed === 'object') {
+        for (const [id, entry] of Object.entries(parsed)) {
+          if (entry && entry.models && typeof entry.models === 'object') costDisk.set(id, entry)
+        }
+      }
+    } catch {
+      // no disk cache yet — first run
+    }
+  }
+
+  /** Debounced atomic write of the disk cache. */
+  function scheduleSaveCostDisk(): void {
+    costDiskDirty = true
+    if (costDiskTimer !== null || costDiskPath === '') return
+    costDiskTimer = setTimeout(() => {
+      costDiskTimer = null
+      if (!costDiskDirty) return
+      costDiskDirty = false
+      try {
+        const payload = JSON.stringify(Object.fromEntries(costDisk))
+        const tmp = costDiskPath + '.tmp-' + process.pid
+        writeFileSync(tmp, payload, 'utf8')
+        renameSync(tmp, costDiskPath)
+      } catch (err) {
+        console.error('wsfm: cost disk cache write failed', err)
+      }
+    }, 1500)
+  }
+
+  /** Projection watermark for a session (fast; undefined when unavailable). */
+  async function sessionWatermark(id: string): Promise<number | undefined> {
+    const s = svc()
+    try {
+      if (s.sessions && typeof s.sessions.get === 'function') {
+        const live = s.sessions.get(id)
+        if (live && s.projections && typeof s.projections.snapshot === 'function') {
+          const snap = s.projections.snapshot(live)
+          if (snap && typeof snap.asOfSeq === 'number') return snap.asOfSeq
+        }
+      }
+      if (s.cache && typeof s.cache.coldSnapshot === 'function') {
+        const snap = await s.cache.coldSnapshot(id)
+        if (snap && typeof snap.asOfSeq === 'number') return snap.asOfSeq
+      }
+    } catch {
+      // fall through
+    }
+    return undefined
+  }
+
+  loadCostDisk()
 
   /** Reject a promise after a deadline (the underlying work keeps running). */
   function withTimeout<T = any>(p: Promise<T>, ms: number, label: string): Promise<T> {
@@ -404,9 +477,24 @@ export function apply(ctx: Context) {
             const live = s.sessions && typeof s.sessions.get === 'function' ? s.sessions.get(id) : undefined
             if (live && Array.isArray(live.events)) {
               events = live.events
-            } else if (s.query && typeof s.query.readSession === 'function') {
-              const log = await withTimeout(s.query.readSession(id), LOG_READ_TIMEOUT_MS, 'wsfm cost readSession')
-              events = log && Array.isArray(log.events) ? log.events : []
+            } else {
+              // Cold session: reuse the disk cache when the log has not grown
+              // (same watermark) or the entry is recent — skip the expensive
+              // full-log replay entirely.
+              const asOf = await sessionWatermark(id)
+              const disk = costDisk.get(id)
+              if (disk) {
+                const unchanged = asOf !== undefined && disk.asOf === asOf
+                const fresh = Date.now() - disk.at < COST_DISK_TTL
+                if (unchanged || fresh) {
+                  costCache.set(id, { at: now, models: disk.models })
+                  return { id, models: disk.models }
+                }
+              }
+              if (s.query && typeof s.query.readSession === 'function') {
+                const log = await withTimeout(s.query.readSession(id), LOG_READ_TIMEOUT_MS, 'wsfm cost readSession')
+                events = log && Array.isArray(log.events) ? log.events : []
+              }
             }
             const models: Record<string, ModelBuckets> = {}
             if (events) {
@@ -438,6 +526,13 @@ export function apply(ctx: Context) {
               }
             }
             costCache.set(id, { at: now, models })
+            try {
+              const asOf = await sessionWatermark(id)
+              costDisk.set(id, { at: now, asOf, models })
+              scheduleSaveCostDisk()
+            } catch (err) {
+              console.error('wsfm: cost disk update failed', err)
+            }
             return { id, models }
           } catch (err) {
             console.error('wsfm: cost for ' + id + ' failed', err)
