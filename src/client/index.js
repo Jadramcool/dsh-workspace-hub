@@ -598,6 +598,47 @@ window.__ModuleLoader__.load({
         }
       }, [items])
     
+      // Live refresh: poll token usage (and cost) on an interval so usage in an
+      // ongoing chat shows up on the workspace rows without a page reload. Host
+      // lookups are cheap (live projections / disk caches), so 30s is safe.
+      React.useEffect(() => {
+        if (typeof fetch === 'undefined' || typeof window === 'undefined') return
+        let alive = true
+        const collect = () => {
+          const all = []
+          items.forEach((ws) => ws.sessionIds.forEach((id) => { if (all.indexOf(id) === -1) all.push(id) }))
+          if (all.length === 0) return
+          hostCall('wsfm-tokens', { sessionIds: all }).then((res) => {
+            if (!alive || !res || typeof res !== 'object') return
+            const next = Object.assign({}, tokenRef.current)
+            let changed = false
+            Object.keys(res).forEach((k) => {
+              if (res[k] !== undefined) { next[k] = res[k]; changed = true }
+            })
+            if (changed) {
+              tokenRef.current = next
+              setTokenMap(next)
+            }
+          }).catch(() => {})
+          hostCall('wsfm-cost', { sessionIds: all }).then((res) => {
+            if (!alive || !res || typeof res !== 'object') return
+            const next = Object.assign({}, costRef.current)
+            let changed = false
+            Object.keys(res).forEach((k) => {
+              if (res[k] !== undefined) { next[k] = res[k]; changed = true }
+            })
+            if (changed) {
+              costRef.current = next
+              setCostMap(next)
+              saveCostCache(next)
+            }
+          }).catch(() => {})
+        }
+        const first = window.setTimeout(collect, 8000)
+        const timer = window.setInterval(collect, 30000)
+        return () => { alive = false; window.clearTimeout(first); window.clearInterval(timer) }
+      }, [items])
+
       // OpenCode Go plan usage (5h rolling / weekly / monthly). Cached values
       // render instantly; this fires once on mount and refreshes in background.
       React.useEffect(() => {
