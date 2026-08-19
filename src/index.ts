@@ -15,6 +15,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 /** Stable cordis plugin name. */
 export const name = 'workspace-hub'
@@ -231,7 +233,68 @@ export function apply(ctx: Context) {
     return null
   }
 
+  // ---- OpenCode Go plan usage ---------------------------------------------
+  const OPCODE_USAGE_URL = 'https://opencode.ai/zen/go/v1/usage'
+  const OPCODE_USAGE_TTL = 60000
+  let usageCache: { at: number; data: UsageResult } | null = null
+
+  interface UsageWindow { status?: string; percent?: number; resetsAt?: string }
+  type UsageResult = { ok: true; usage: { rolling: UsageWindow | null; weekly: UsageWindow | null; monthly: UsageWindow | null } } | { ok: false; reason: string }
+
+  /** Resolve the OpenCode API key from ~/.local/share/opencode/auth.json. */
+  function readOpencodeKey(): string | null {
+    try {
+      const home = process.env.USERPROFILE || process.env.HOME || ''
+      if (!home) return null
+      const raw = readFileSync(join(home, '.local', 'share', 'opencode', 'auth.json'), 'utf8')
+      const auth = JSON.parse(raw) as Record<string, { type?: string; key?: string } | undefined>
+      const entry = auth['opencode-go'] ?? auth.opencode
+      if (entry && typeof entry.key === 'string' && entry.key.length > 0) return entry.key
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  /** Fetch OpenCode Go plan usage with a short cache; failures are not cached. */
+  async function opencodeUsage(): Promise<UsageResult> {
+    const now = Date.now()
+    if (usageCache && now - usageCache.at < OPCODE_USAGE_TTL) return usageCache.data
+    const key = readOpencodeKey()
+    if (!key) return { ok: false, reason: 'no-key' }
+    try {
+      const res = await fetch(OPCODE_USAGE_URL, {
+        headers: { authorization: 'Bearer ' + key },
+        signal: AbortSignal.timeout(15000),
+      })
+      if (!res.ok) return { ok: false, reason: 'http-' + res.status }
+      const body = (await res.json()) as { usage?: { rolling?: UsageWindow; weekly?: UsageWindow; monthly?: UsageWindow } }
+      const usage = body && body.usage
+      if (!usage) return { ok: false, reason: 'bad-body' }
+      const data: UsageResult = {
+        ok: true,
+        usage: {
+          rolling: usage.rolling ?? null,
+          weekly: usage.weekly ?? null,
+          monthly: usage.monthly ?? null,
+        },
+      }
+      usageCache = { at: now, data }
+      return data
+    } catch {
+      return { ok: false, reason: 'network' }
+    }
+  }
+
   const routes = [
+    {
+      kind: 'exact',
+      path: '/api/wsfm/usage',
+      handler: async (req, res) => {
+        if (!isLoopbackRequest(req)) return writeJson(res, 403, { error: 'forbidden: loopback-only' })
+        writeJson(res, 200, await opencodeUsage())
+      },
+    },
     {
       kind: 'exact',
       path: '/api/wsfm/diag',
