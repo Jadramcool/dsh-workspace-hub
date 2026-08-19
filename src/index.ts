@@ -1,16 +1,19 @@
 /**
  * dsh-workspace-hub — host half.
  *
- * Serves the token-usage and per-model cost endpoints used by the browser
- * half's sidebar panel (workspace folders, token overview, cost stats):
+ * Serves the token-usage, cost, and OpenCode Go plan-usage endpoints used by
+ * the browser half's sidebar panel (workspace folders, token overview, cost
+ * stats, quota):
  *
  *   POST /api/wsfm/tokens   per-session provider tokenUsage (4 buckets)
  *   POST /api/wsfm/cost     per-session per-model token buckets (peak/off-peak)
+ *   POST /api/wsfm/usage    OpenCode Go plan usage (5h/weekly/monthly), refreshable
  *
- * Both routes are loopback-only (browser same-origin fence), read JSON bodies
- * and answer JSON. No third-party runtime dependencies — everything rides the
- * dsh host services (sessionProjectionCache, sessionProjections, sessions,
- * sessionQuery).
+ * Routes are loopback-only (browser same-origin fence), read JSON bodies and
+ * answer JSON. No third-party runtime dependencies — everything rides the dsh
+ * host services (sessionProjectionCache, sessionProjections, sessions,
+ * sessionQuery). Cost breakdowns persist to ~/.dsh/wsfm-cost.json keyed by the
+ * projection watermark so restarts do not replay unchanged session logs.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -255,7 +258,7 @@ export function apply(ctx: Context) {
   async function tokensFromLog(id: string): Promise<TokenUsageView | null> {
     const s = svc()
     if (!s.query || typeof s.query.readSession !== 'function') return null
-    const log = await s.query.readSession(id)
+    const log = await withTimeout(s.query.readSession(id), LOG_READ_TIMEOUT_MS, 'wsfm tokens readSession')
     const events = log && Array.isArray(log.events) ? log.events : []
     let uncached = 0, output = 0, cacheRead = 0, cacheWrite = 0
     for (const ev of events) {
@@ -324,6 +327,7 @@ export function apply(ctx: Context) {
   const OPCODE_USAGE_URL = 'https://opencode.ai/zen/go/v1/usage'
   const OPCODE_USAGE_TTL = 60000
   let usageCache: { at: number; data: UsageResult } | null = null
+  let usageInflight: Promise<UsageResult> | null = null
 
   interface UsageWindow { status?: string; percent?: number; resetsAt?: string }
   type UsageResult = { ok: true; usage: { rolling: UsageWindow | null; weekly: UsageWindow | null; monthly: UsageWindow | null } } | { ok: false; reason: string }
@@ -344,33 +348,41 @@ export function apply(ctx: Context) {
   }
 
   /** Fetch OpenCode Go plan usage with a short cache; failures are not cached. */
-  async function opencodeUsage(force = false): Promise<UsageResult> {
+  function opencodeUsage(force = false): Promise<UsageResult> {
     const now = Date.now()
-    if (!force && usageCache && now - usageCache.at < OPCODE_USAGE_TTL) return usageCache.data
-    const key = readOpencodeKey()
-    if (!key) return { ok: false, reason: 'no-key' }
-    try {
-      const res = await fetch(OPCODE_USAGE_URL, {
-        headers: { authorization: 'Bearer ' + key },
-        signal: AbortSignal.timeout(15000),
-      })
-      if (!res.ok) return { ok: false, reason: 'http-' + res.status }
-      const body = (await res.json()) as { usage?: { rolling?: UsageWindow; weekly?: UsageWindow; monthly?: UsageWindow } }
-      const usage = body && body.usage
-      if (!usage) return { ok: false, reason: 'bad-body' }
-      const data: UsageResult = {
-        ok: true,
-        usage: {
-          rolling: usage.rolling ?? null,
-          weekly: usage.weekly ?? null,
-          monthly: usage.monthly ?? null,
-        },
+    if (!force && usageCache && now - usageCache.at < OPCODE_USAGE_TTL) return Promise.resolve(usageCache.data)
+    if (usageInflight !== null) return usageInflight
+    usageInflight = (async () => {
+      try {
+        const key = readOpencodeKey()
+        if (!key) return { ok: false, reason: 'no-key' }
+        try {
+          const res = await fetch(OPCODE_USAGE_URL, {
+            headers: { authorization: 'Bearer ' + key },
+            signal: AbortSignal.timeout(15000),
+          })
+          if (!res.ok) return { ok: false, reason: 'http-' + res.status }
+          const body = (await res.json()) as { usage?: { rolling?: UsageWindow; weekly?: UsageWindow; monthly?: UsageWindow } }
+          const usage = body && body.usage
+          if (!usage) return { ok: false, reason: 'bad-body' }
+          const data: UsageResult = {
+            ok: true,
+            usage: {
+              rolling: usage.rolling ?? null,
+              weekly: usage.weekly ?? null,
+              monthly: usage.monthly ?? null,
+            },
+          }
+          usageCache = { at: Date.now(), data }
+          return data
+        } catch {
+          return { ok: false, reason: 'network' }
+        }
+      } finally {
+        usageInflight = null
       }
-      usageCache = { at: now, data }
-      return data
-    } catch {
-      return { ok: false, reason: 'network' }
-    }
+    })()
+    return usageInflight
   }
 
   const routes = [
@@ -382,70 +394,6 @@ export function apply(ctx: Context) {
         const body = await readJsonBody(req)
         const force = !!(body && body.refresh)
         writeJson(res, 200, await opencodeUsage(force))
-      },
-    },
-    {
-      kind: 'exact',
-      path: '/api/wsfm/diag',
-      handler: async (req, res) => {
-        if (!isLoopbackRequest(req)) return writeJson(res, 403, { error: 'forbidden: loopback-only' })
-        const body = await readJsonBody(req)
-        const ids = sessionIdsOf(body)
-        const s = svc()
-        const out: Record<string, unknown> = {
-          services: {
-            cache: s.cache !== undefined && typeof s.cache.coldSnapshot === 'function',
-            projections: s.projections !== undefined && typeof s.projections.snapshot === 'function',
-            sessions: s.sessions !== undefined && typeof s.sessions.get === 'function',
-            query: s.query !== undefined && typeof s.query.readSession === 'function',
-          },
-        }
-        for (const id of ids) {
-          const rec: Record<string, unknown> = {}
-          try {
-            if (s.cache && typeof s.cache.coldSnapshot === 'function') {
-              const snap = await s.cache.coldSnapshot(id)
-              rec.coldSnapshot = {
-                ok: true,
-                keys: snap ? Object.keys(snap) : null,
-                valuesKeys: snap && snap.values ? Object.keys(snap.values) : null,
-                tokenUsage: snap && snap.values && snap.values.tokenUsage ? { keys: Object.keys(snap.values.tokenUsage), preview: JSON.stringify(snap.values.tokenUsage).slice(0, 200) } : null,
-              }
-            } else {
-              rec.coldSnapshot = { ok: false, reason: 'service missing' }
-            }
-          } catch (err) {
-            rec.coldSnapshot = { ok: false, reason: String((err as Error)?.message ?? err) }
-          }
-          try {
-            const live = s.sessions && typeof s.sessions.get === 'function' ? s.sessions.get(id) : undefined
-            rec.live = live !== undefined
-            if (live && s.projections && typeof s.projections.snapshot === 'function') {
-              const snap = s.projections.snapshot(live)
-              rec.liveSnapshot = {
-                keys: snap ? Object.keys(snap) : null,
-                valuesKeys: snap && snap.values ? Object.keys(snap.values) : null,
-              }
-            }
-          } catch (err) {
-            rec.live = { error: String((err as Error)?.message ?? err) }
-          }
-          try {
-            if (s.query && typeof s.query.readSession === 'function') {
-              const t0 = Date.now()
-              const log = await withTimeout(s.query.readSession(id), LOG_READ_TIMEOUT_MS, 'wsfm diag readSession')
-              const ms = Date.now() - t0
-              const events = log && Array.isArray(log.events) ? log.events : []
-              rec.readSession = { ok: true, ms, events: events.length }
-            } else {
-              rec.readSession = { ok: false, reason: 'service missing' }
-            }
-          } catch (err) {
-            rec.readSession = { ok: false, error: String((err as Error)?.message ?? err) }
-          }
-          out[id] = rec
-        }
-        writeJson(res, 200, out)
       },
     },
     {
