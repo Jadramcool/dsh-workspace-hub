@@ -54,6 +54,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs",
     "typecheck": "tsc --noEmit",
-    "prepare": "npm run build"
+    "prepublishOnly": "npm run build"
   }
 }
