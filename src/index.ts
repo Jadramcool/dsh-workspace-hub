@@ -171,10 +171,12 @@ export function apply(ctx: Context) {
           }
           out[id] = usage
             ? {
-                uncachedInputTokens: usage.uncachedInputTokens || 0,
-                outputTokens: usage.outputTokens || 0,
-                cacheReadTokens: usage.cacheReadTokens || 0,
-                cacheWriteTokens: usage.cacheWriteTokens || 0,
+                // tokenUsage rows carry { totals, last } in the current projection
+                // cache format; fall back to legacy flat fields for older caches.
+                uncachedInputTokens: usage.totals?.uncachedInputTokens ?? usage.uncachedInputTokens ?? 0,
+                outputTokens: usage.totals?.outputTokens ?? usage.outputTokens ?? 0,
+                cacheReadTokens: usage.totals?.cacheReadTokens ?? usage.cacheReadTokens ?? 0,
+                cacheWriteTokens: usage.totals?.cacheWriteTokens ?? usage.cacheWriteTokens ?? 0,
               }
             : null
         }
