@@ -41,7 +41,7 @@
 - **一键刷新** — 绕过缓存直连官方端点
 - 密钥自动读取自 `~/.local/share/opencode/auth.json`（`opencode-go` / `opencode` 条目），零配置
 
-> 💾 **数据存储**：分组、排序、单价保存在浏览器 localStorage（`dsh.wsFolders.v1` / `dsh.wsPrices.v1`），费用缓存（`dsh.wsCost.v1`）与额度缓存（`dsh.wsUsage.v1`）同样本地化；Host 侧费用结果持久化到 `~/.dsh/wsfm-cost.json`（按会话日志水位校验，重启不重算未变化的会话），无服务端状态，卸载即清净。
+> 💾 **数据存储**：分组与排序持久化到 Host 磁盘 `~/.dsh/wsfm-folders.json`（不随浏览器丢失，换浏览器/清理缓存仍在），浏览器 localStorage 仅作快速加载兜底；单价、费用缓存、额度缓存保存在浏览器 localStorage（`dsh.wsPrices.v1` / `dsh.wsCost.v1` / `dsh.wsUsage.v1`）；Host 侧费用结果持久化到 `~/.dsh/wsfm-cost.json`（按会话日志水位校验，重启不重算未变化的会话）。无服务端状态，卸载即清净。
 
 ---
 

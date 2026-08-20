@@ -385,47 +385,49 @@ export function apply(ctx: Context) {
     return usageInflight
   }
 
-  // ---- Folder/group persistence -------------------------------------------------
-  // The sidebar's grouping data (folders, workspace→folder assignment, manual
-  // order) is persisted on disk so it survives browser/device switches, unlike
-  // the old localStorage-only layout. Read/written through /api/wsfm/folders.
-  const FOLDERS_FILE = 'wsfm-folders.json'
-  let foldersData: Record<string, unknown> | null = null
-  let foldersPath = ''
-
-  function foldersFilePath(): string {
-    if (foldersPath !== '') return foldersPath
-    const home = process.env.USERPROFILE || process.env.HOME || ''
-    if (!home) return ''
-    foldersPath = join(home, '.dsh', FOLDERS_FILE)
-    return foldersPath
-  }
-
-  function loadFoldersDisk(): void {
-    const p = foldersFilePath()
-    if (!p) return
-    try {
-      const raw = readFileSync(p, 'utf8')
-      const parsed = JSON.parse(raw) as Record<string, unknown>
-      if (parsed && typeof parsed === 'object') foldersData = parsed
-    } catch {
-      foldersData = null // first run / not present
+  // ---- Generic disk-backed JSON store ---------------------------------------
+  // Used for folder grouping (wsfm-folders.json) and custom model prices
+  // (wsfm-prices.json) so both survive browser/device switches. Read/written
+  // through their /api/wsfm/* routes.
+  function makeDiskStore(filename: string) {
+    let data: Record<string, unknown> | null = null
+    let path = ''
+    const filePath = (): string => {
+      if (path !== '') return path
+      const home = process.env.USERPROFILE || process.env.HOME || ''
+      if (!home) return ''
+      path = join(home, '.dsh', filename)
+      return path
     }
-  }
-
-  function saveFoldersDisk(data: Record<string, unknown>): void {
-    const p = foldersFilePath()
-    if (!p) return
-    try {
-      const tmp = p + '.tmp-' + process.pid
-      writeFileSync(tmp, JSON.stringify(data), 'utf8')
-      renameSync(tmp, p)
-    } catch (err) {
-      console.error('wsfm: folder persistence write failed', err)
+    const load = (): void => {
+      const p = filePath()
+      if (!p) return
+      try {
+        const raw = readFileSync(p, 'utf8')
+        const parsed = JSON.parse(raw) as Record<string, unknown>
+        if (parsed && typeof parsed === 'object') data = parsed
+      } catch {
+        data = null // first run / not present
+      }
     }
+    const save = (value: Record<string, unknown>): void => {
+      const p = filePath()
+      if (!p) return
+      data = value
+      try {
+        const tmp = p + '.tmp-' + process.pid
+        writeFileSync(tmp, JSON.stringify(value), 'utf8')
+        renameSync(tmp, p)
+      } catch (err) {
+        console.error('wsfm: ' + filename + ' write failed', err)
+      }
+    }
+    load()
+    return { filePath, load, save, get: () => data }
   }
 
-  loadFoldersDisk()
+  const folderStore = makeDiskStore('wsfm-folders.json')
+  const priceStore = makeDiskStore('wsfm-prices.json')
 
   const routes = [
     {
@@ -434,16 +436,30 @@ export function apply(ctx: Context) {
       handler: async (req, res) => {
         if (!isLoopbackRequest(req)) return writeJson(res, 403, { error: 'forbidden: loopback-only' })
         const body = await readJsonBody(req)
-        // { save: true, data } writes; otherwise it's a read.
         if (body && body.save === true) {
-          const data = body.data && typeof body.data === 'object' ? body.data : null
+          const data = body.data && typeof body.data === 'object' ? (body.data as Record<string, unknown>) : null
           if (data === null) return writeJson(res, 400, { error: 'invalid data' })
-          foldersData = data as Record<string, unknown>
-          saveFoldersDisk(foldersData)
+          folderStore.save(data)
           writeJson(res, 200, { ok: true })
           return
         }
-        writeJson(res, 200, foldersData ?? null)
+        writeJson(res, 200, folderStore.get() ?? null)
+      },
+    },
+    {
+      kind: 'exact',
+      path: '/api/wsfm/prices',
+      handler: async (req, res) => {
+        if (!isLoopbackRequest(req)) return writeJson(res, 403, { error: 'forbidden: loopback-only' })
+        const body = await readJsonBody(req)
+        if (body && body.save === true) {
+          const data = body.data && typeof body.data === 'object' ? (body.data as Record<string, unknown>) : null
+          if (data === null) return writeJson(res, 400, { error: 'invalid data' })
+          priceStore.save(data)
+          writeJson(res, 200, { ok: true })
+          return
+        }
+        writeJson(res, 200, priceStore.get() ?? null)
       },
     },
     {
