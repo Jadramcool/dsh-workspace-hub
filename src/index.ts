@@ -385,7 +385,67 @@ export function apply(ctx: Context) {
     return usageInflight
   }
 
+  // ---- Folder/group persistence -------------------------------------------------
+  // The sidebar's grouping data (folders, workspace→folder assignment, manual
+  // order) is persisted on disk so it survives browser/device switches, unlike
+  // the old localStorage-only layout. Read/written through /api/wsfm/folders.
+  const FOLDERS_FILE = 'wsfm-folders.json'
+  let foldersData: Record<string, unknown> | null = null
+  let foldersPath = ''
+
+  function foldersFilePath(): string {
+    if (foldersPath !== '') return foldersPath
+    const home = process.env.USERPROFILE || process.env.HOME || ''
+    if (!home) return ''
+    foldersPath = join(home, '.dsh', FOLDERS_FILE)
+    return foldersPath
+  }
+
+  function loadFoldersDisk(): void {
+    const p = foldersFilePath()
+    if (!p) return
+    try {
+      const raw = readFileSync(p, 'utf8')
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      if (parsed && typeof parsed === 'object') foldersData = parsed
+    } catch {
+      foldersData = null // first run / not present
+    }
+  }
+
+  function saveFoldersDisk(data: Record<string, unknown>): void {
+    const p = foldersFilePath()
+    if (!p) return
+    try {
+      const tmp = p + '.tmp-' + process.pid
+      writeFileSync(tmp, JSON.stringify(data), 'utf8')
+      renameSync(tmp, p)
+    } catch (err) {
+      console.error('wsfm: folder persistence write failed', err)
+    }
+  }
+
+  loadFoldersDisk()
+
   const routes = [
+    {
+      kind: 'exact',
+      path: '/api/wsfm/folders',
+      handler: async (req, res) => {
+        if (!isLoopbackRequest(req)) return writeJson(res, 403, { error: 'forbidden: loopback-only' })
+        const body = await readJsonBody(req)
+        // { save: true, data } writes; otherwise it's a read.
+        if (body && body.save === true) {
+          const data = body.data && typeof body.data === 'object' ? body.data : null
+          if (data === null) return writeJson(res, 400, { error: 'invalid data' })
+          foldersData = data as Record<string, unknown>
+          saveFoldersDisk(foldersData)
+          writeJson(res, 200, { ok: true })
+          return
+        }
+        writeJson(res, 200, foldersData ?? null)
+      },
+    },
     {
       kind: 'exact',
       path: '/api/wsfm/usage',
