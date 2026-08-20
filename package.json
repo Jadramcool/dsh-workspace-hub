@@ -1,7 +1,7 @@
 {
   "name": "dsh-workspace-hub",
   "description": "DSH workspace folders: categorize workspaces into folders in the left sidebar (drag reorder for folders/workspaces/sessions, inline edit, one-click expand/collapse, search) plus per-workspace token usage and cost stats (inline totals, hover detail card, overview panel with per-model price cards; DeepSeek official peak/off-peak pricing defaults for all deepseek/* models, three spend calibers all/off-peak/peak).",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
