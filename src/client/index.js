@@ -143,7 +143,7 @@ window.__ModuleLoader__.load({
     .wsfm-rail-dot{position:absolute;top:4px;right:4px;width:5px;height:5px;border-radius:50%}
     .wsfm-inline{flex:1;min-width:0;font-size:11.5px;font-family:inherit;color:inherit;background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.15));border:1px solid rgba(110,168,255,.4);border-radius:7px;padding:3px 7px;outline:none;box-shadow:0 0 0 2px rgba(110,168,255,.06);transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}
     .wsfm-newrow{display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:9px;margin:2px 0 6px;background:var(--dsw-alias-button-primary-dimmed,rgba(110,168,255,.1));border:1px dashed var(--dsw-alias-border-l2,rgba(148,163,184,.35));color:var(--dsw-alias-brand-primary,#6ea8ff);animation:wsfm-rise .22s ease both}
-    .wsfm-menu{position:absolute;right:2px;top:calc(100% - 2px);z-index:60;min-width:132px;max-width:190px;background:var(--dsw-alias-bg-overlay,#1c1d21);border:1px solid var(--dsw-alias-border-l2,rgba(148,163,184,.3));border-radius:9px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:wsfm-rise .15s ease both}
+    .wsfm-menu{position:fixed;right:auto;top:auto;z-index:2147482995;min-width:132px;max-width:190px;background:var(--dsw-alias-bg-overlay,#1c1d21);border:1px solid var(--dsw-alias-border-l2,rgba(148,163,184,.3));border-radius:9px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:wsfm-rise .15s ease both}
     .wsfm-menu-item{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:11.5px;color:var(--dsw-alias-label-secondary,#b8bfcc);white-space:nowrap}
     .wsfm-menu-item:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(148,163,184,.12));color:var(--dsw-alias-label-primary,#e7e9ee)}
     .wsfm-menu-item.cur{color:var(--dsw-alias-brand-primary,#6ea8ff)}
@@ -292,7 +292,7 @@ window.__ModuleLoader__.load({
         className: 'wsfm-ic' + (danger ? ' danger' : '') + (ok ? ' ok' : '') + (className ? ' ' + className : ''),
         title: title,
         'aria-label': label || title,
-        onClick: (e) => { e.stopPropagation(); onClick() },
+        onClick: (e) => { e.stopPropagation(); onClick && onClick(e) },
       }, React.createElement(Icon, { d: icon, size: 12 }))
     }
     
@@ -481,6 +481,7 @@ window.__ModuleLoader__.load({
       const [dragOver, setDragOver] = React.useState(null)
       const [editing, setEditing] = React.useState(null)
       const [menuFor, setMenuFor] = React.useState(null)
+      const [menuPos, setMenuPos] = React.useState(null)
       const [dragState, setDragState] = React.useState(null)
       const [dropMarker, setDropMarker] = React.useState(null)
       const [dropLine, setDropLine] = React.useState(null)
@@ -800,13 +801,17 @@ window.__ModuleLoader__.load({
             if (t.closest('.wsfm-mbtn')) return
           }
           setMenuFor(null)
+          setMenuPos(null)
         }
-        const onKey = (e) => { if (e.key === 'Escape') setMenuFor(null) }
+        const onKey = (e) => { if (e.key === 'Escape') { setMenuFor(null); setMenuPos(null) } }
+        const onScroll = () => { setMenuFor(null); setMenuPos(null) }
         document.addEventListener('mousedown', close)
         document.addEventListener('keydown', onKey)
+        document.addEventListener('scroll', onScroll, true)
         return () => {
           document.removeEventListener('mousedown', close)
           document.removeEventListener('keydown', onKey)
+          document.removeEventListener('scroll', onScroll, true)
         }
       }, [menuFor])
     
@@ -1547,7 +1552,12 @@ window.__ModuleLoader__.load({
           ))
           headKids.push(React.createElement('span', { key: 'acts', className: 'wsfm-wacts' },
             React.createElement(IconBtn, { title: '在此工作区新建会话', icon: IC_SESSION, onClick: () => startSession(ws.workspaceId) }),
-            React.createElement(IconBtn, { title: '移动到分组', icon: IC_MOVE, className: 'wsfm-mbtn' + (menuOpen ? ' mbtn-open' : ''), onClick: () => setMenuFor(menuOpen ? null : ws.workspaceId) }),
+            React.createElement(IconBtn, { title: '移动到分组', icon: IC_MOVE, className: 'wsfm-mbtn' + (menuOpen ? ' mbtn-open' : ''), onClick: (e) => {
+              if (menuOpen) { setMenuFor(null); setMenuPos(null); return }
+              const r = e && e.currentTarget ? e.currentTarget.getBoundingClientRect() : null
+              setMenuPos(r ? { left: r.right - 190, top: r.bottom + 4 } : null)
+              setMenuFor(ws.workspaceId)
+            } }),
             React.createElement(IconBtn, { title: '重命名工作区', icon: IC_PENCIL, onClick: () => beginEdit({ kind: 'workspace', id: ws.workspaceId }) }),
             React.createElement(IconBtn, { title: '删除工作区（保留目录与会话日志）', icon: IC_TRASH, danger: true, onClick: () => deleteWorkspace(ws) }),
           ))
@@ -1601,12 +1611,19 @@ window.__ModuleLoader__.load({
             title: ws.path,
           }, headKids),
           expanded ? React.createElement('div', { className: 'wsfm-slist' }, sess.map((s) => renderSessionRow(s, ws.workspaceId, sess))) : null,
-          menuOpen ? React.createElement('div', { className: 'wsfm-menu', role: 'menu', 'aria-label': '移动到分组' },
+          menuOpen ? React.createElement('div', {
+            className: 'wsfm-menu',
+            role: 'menu',
+            'aria-label': '移动到分组',
+            style: menuPos
+              ? { position: 'fixed', left: Math.max(8, Math.min(menuPos.left, window.innerWidth - 200)), top: menuPos.top + 190 > window.innerHeight ? Math.max(8, menuPos.top - 24 - 190) : menuPos.top }
+              : undefined,
+          },
             menuItems.map((item) => React.createElement('div', {
               key: item.id || 'none',
               role: 'menuitem',
               className: 'wsfm-menu-item' + (fid === item.id ? ' cur' : ''),
-              onClick: (e) => { e.stopPropagation(); assignTo(ws.workspaceId, item.id); setMenuFor(null) },
+              onClick: (e) => { e.stopPropagation(); assignTo(ws.workspaceId, item.id); setMenuFor(null); setMenuPos(null) },
             },
               item.color
                 ? React.createElement('span', { className: 'wsfm-dot', style: { background: item.color } })
