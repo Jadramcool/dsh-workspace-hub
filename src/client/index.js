@@ -63,12 +63,12 @@ window.__ModuleLoader__.load({
     .wsfm-title{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;letter-spacing:.02em;color:var(--dsw-alias-label-primary,#e7e9ee);flex:none}
     .wsfm-title-chip{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:var(--dsw-alias-button-primary-dimmed,rgba(110,168,255,.14));color:var(--dsw-alias-brand-primary,#6ea8ff)}
     .wsfm-head-actions{display:flex;align-items:center;gap:2px;margin-left:auto;min-width:0}
-    .wsfm-hbtn{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary,#b8bfcc);cursor:pointer;font-size:11.5px;font-family:inherit;white-space:nowrap;transition:background .12s ease,color .12s ease,border-color .12s ease}
+    .wsfm-hbtn{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,#b8bfcc);cursor:pointer;font-size:12px;font-family:inherit;white-space:nowrap;transition:background .12s ease,color .12s ease,border-color .12s ease}
     .wsfm-hbtn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(148,163,184,.1));color:var(--dsw-alias-label-primary,#e7e9ee)}
     .wsfm-hbtn-primary{background:var(--dsw-alias-button-primary-dimmed,rgba(110,168,255,.14));color:var(--dsw-alias-brand-primary,#6ea8ff);border-color:rgba(110,168,255,.2)}
     .wsfm-hbtn-primary:hover{background:var(--dsw-alias-button-primary-hover,rgba(110,168,255,.24))}
     .wsfm-hbtn-on{background:var(--dsw-alias-button-primary-hover,rgba(110,168,255,.24));color:var(--dsw-alias-brand-primary,#6ea8ff);border-color:rgba(110,168,255,.35)}
-    .wsfm-hbtn-ic{display:inline-flex;align-items:center;justify-content:center;width:26px;height:24px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary,#b8bfcc);cursor:pointer;padding:0;transition:background .12s ease,color .12s ease,border-color .12s ease}
+    .wsfm-hbtn-ic{display:inline-flex;align-items:center;justify-content:center;width:28px;height:26px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,#b8bfcc);cursor:pointer;padding:0;transition:background .12s ease,color .12s ease,border-color .12s ease}
     .wsfm-hbtn-ic:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(148,163,184,.1));color:var(--dsw-alias-label-primary,#e7e9ee)}
     .wsfm-hbtn-ic.on{color:var(--dsw-alias-brand-primary,#6ea8ff);background:var(--dsw-alias-button-primary-dimmed,rgba(110,168,255,.14))}
     .wsfm-srch{display:flex;align-items:center;gap:6px;margin:8px 12px 2px;padding:0 9px;border:1px solid var(--dsw-alias-border-l1,rgba(148,163,184,.18));border-radius:8px;background:var(--dsw-alias-bg-layer-1,rgba(148,163,184,.07));color:var(--dsw-alias-label-tertiary,#9aa3b2);transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}
@@ -120,7 +120,7 @@ window.__ModuleLoader__.load({
     .wsfm-sess-tag{font-size:9.5px;color:var(--dsw-alias-label-tertiary,#9aa3b2);border:1px dashed var(--dsw-alias-border-l1,rgba(148,163,184,.3));border-radius:4px;padding:0 4px;flex:none}
     .wsfm-sacts{visibility:hidden;opacity:0;position:absolute;top:5px;right:5px;display:flex;align-items:center;gap:1px;transition:opacity .12s ease;background:inherit}
     .wsfm-sess:hover .wsfm-sacts{visibility:visible;opacity:1}
-    .wsfm-ic{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:none;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#b8bfcc);cursor:pointer;padding:0;transition:background .12s ease,color .12s ease}
+    .wsfm-ic{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:none;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary,#b8bfcc);cursor:pointer;padding:0;transition:background .12s ease,color .12s ease}
     .wsfm-ic:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(148,163,184,.14));color:var(--dsw-alias-label-primary,#e7e9ee)}
     .wsfm-ic.danger:hover{color:var(--dsw-alias-state-error-primary,#ff7a7a);background:rgba(255,122,122,.12)}
     .wsfm-ic.ok:hover{color:var(--dsw-alias-state-success-primary,#4ade80);background:rgba(74,222,128,.12)}
@@ -293,7 +293,7 @@ window.__ModuleLoader__.load({
         title: title,
         'aria-label': label || title,
         onClick: (e) => { e.stopPropagation(); onClick() },
-      }, React.createElement(Icon, { d: icon, size: 11 }))
+      }, React.createElement(Icon, { d: icon, size: 12 }))
     }
     
     function InlineEditor({ initial, placeholder, onCommit, onCancel }) {
@@ -1877,11 +1877,11 @@ window.__ModuleLoader__.load({
               onClick: toggleAll,
             }, React.createElement(Icon, { d: allFoldersOpen ? IC_FOLD : IC_UNFOLD, size: 13 })),
             React.createElement('button', { type: 'button', className: 'wsfm-hbtn', title: '新建会话', onClick: () => startSession(undefined) },
-              React.createElement(Icon, { d: IC_SESSION, size: 11 }),
+              React.createElement(Icon, { d: IC_SESSION, size: 12 }),
               '会话',
             ),
             React.createElement('button', { type: 'button', className: 'wsfm-hbtn', title: '添加工作区', onClick: () => addWorkspace(null) },
-              React.createElement(Icon, { d: IC_PLUS, size: 11 }),
+              React.createElement(Icon, { d: IC_PLUS, size: 12 }),
               '工作区',
             ),
             React.createElement('button', {
